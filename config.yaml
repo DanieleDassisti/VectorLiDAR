@@ -1,0 +1,46 @@
+# Configuration for LiDAR SLAM & Autonomous Exploration Sandbox
+
+# Environment configuration
+environment:
+  width: 800         # Width of simulation canvas in pixels
+  height: 600        # Height of simulation canvas in pixels
+
+# Mobile Robot Kinematics (Differential Drive)
+robot:
+  radius: 15.0       # Collision radius in pixels
+  max_speed: 120.0   # Maximum linear speed in pixels/sec
+  max_omega: 3.14    # Maximum angular speed in rad/sec
+  max_accel: 80.0    # Maximum linear acceleration in pixels/sec^2
+  max_alpha: 4.0     # Maximum angular acceleration in rad/sec^2
+  odometry_noise:
+    xy: 0.1          # Linear odometry noise multiplier
+    theta: 0.02      # Angular odometry noise multiplier (rad)
+
+# LiDAR Sensor Configuration
+lidar:
+  beam_count: 120    # Number of scanner rays (120 beams = 3-degree resolution for 360deg scan)
+  max_range: 350.0   # Max range in pixels
+  noise_std: 1.5     # Gaussian sensor noise standard deviation in pixels
+  fov: 360.0         # Field of view in degrees (360 for full circle)
+
+# SLAM Occupancy Grid Map Configuration
+slam:
+  cell_size: 8       # Size of each grid cell in pixels (800/8 = 100 cells wide, 600/8 = 75 cells high)
+  initial_p: 0.5     # Prior probability of occupancy
+  log_odds_free: -0.4  # Log-odds update value for free cells (Bayesian updates)
+  log_odds_occ: 0.85   # Log-odds update value for occupied cells (Bayesian updates)
+  min_log_odds: -2.0   # Lower bound log-odds threshold
+  max_log_odds: 3.5    # Upper bound log-odds threshold
+  threshold_occupied: 0.65  # Probability threshold to mark cell as occupied in planner
+
+# Navigation & Path Planning
+planner:
+  dwa_dt: 0.1             # Prediction time step for DWA (seconds)
+  dwa_predict_time: 1.2   # Trajectory projection window (seconds)
+  dwa_velocity_samples: 8 # Linear velocity samples to test
+  dwa_omega_samples: 16   # Angular velocity samples to test
+  weights:
+    heading: 2.2         # DWA weight: steering alignment to goal
+    clearance: 1.0       # DWA weight: obstacle clearance distance
+    velocity: 1.0        # DWA weight: forward speed preference
+  target_tolerance: 12.0  # Goal arrival tolerance in pixels

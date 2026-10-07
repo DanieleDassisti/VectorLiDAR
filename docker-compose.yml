@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  sandbox:
+    build: .
+    container_name: lidar_robotics_sandbox
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/workspace
+    environment:
+      - PYTHONUNBUFFERED=1

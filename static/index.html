@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LiDAR SLAM & Autonomous Exploration Sandbox</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+    <div class="cyber-overlay"></div>
+    
+    <div class="app-container">
+        <!-- HEADER -->
+        <header class="app-header">
+            <div class="header-logo">
+                <div class="neon-dot"></div>
+                <h1>CYBER<span>LIDAR</span></h1>
+                <span class="logo-sub">ROBOTICS SANDBOX v1.0</span>
+            </div>
+            
+            <div class="header-stats">
+                <div class="stat-card">
+                    <span class="stat-label">STATUS</span>
+                    <span class="stat-value text-green" id="connection-status">CONNECTED</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">MAPPING PROGRESS</span>
+                    <span class="stat-value text-cyan" id="mapping-pct">0.0%</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">POSE ERROR</span>
+                    <span class="stat-value text-orange" id="pose-error">0.0 px</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- MAIN LAYOUT -->
+        <main class="app-body">
+            <!-- LEFT COLUMN: CONTROLS -->
+            <section class="control-panel glass">
+                <div class="panel-header">
+                    <h2><span class="icon">&#9881;</span> SYSTEM CONTROLS</h2>
+                </div>
+                
+                <!-- Navigation Mode -->
+                <div class="control-group">
+                    <label class="group-title">NAVIGATION MODE</label>
+                    <div class="toggle-buttons">
+                        <button id="btn-manual" class="active">MANUAL (CLICK / WASD)</button>
+                        <button id="btn-auto">AUTONOMOUS SLAM</button>
+                    </div>
+                </div>
+
+                <!-- Environment Layout Presets -->
+                <div class="control-group">
+                    <label for="map-preset" class="group-title">MAP PRESETS</label>
+                    <select id="map-preset" class="cyber-select">
+                        <option value="office">Robotics Lab / Office</option>
+                        <option value="maze">Robotics Test Grid (Maze)</option>
+                        <option value="arena">Obstacle Arena</option>
+                    </select>
+                </div>
+
+                <!-- LiDAR Configuration -->
+                <div class="control-group">
+                    <label class="group-title">LiDAR CONFIGURATION</label>
+                    <div class="slider-container">
+                        <div class="slider-header">
+                            <span>Scanning Resolution (Beams)</span>
+                            <span class="slider-val" id="beams-val">120</span>
+                        </div>
+                        <input type="range" id="lidar-beams" min="30" max="360" step="10" value="120">
+                    </div>
+                    
+                    <div class="slider-container">
+                        <div class="slider-header">
+                            <span>Maximum Scan Range</span>
+                            <span class="slider-val" id="range-val">350 px</span>
+                        </div>
+                        <input type="range" id="lidar-range" min="100" max="600" step="25" value="350">
+                    </div>
+
+                    <div class="toggle-container">
+                        <span>Simulate Sensor Noise</span>
+                        <label class="cyber-switch">
+                            <input type="checkbox" id="sensor-noise" checked>
+                            <span class="switch-slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="control-group">
+                    <button id="btn-reset-odom" class="btn-action btn-danger">RESET ODOMETRY & SLAM</button>
+                    <button id="btn-clear-walls" class="btn-action btn-secondary">CLEAR WALLS</button>
+                </div>
+
+                <!-- Editor Instructions -->
+                <div class="editor-info">
+                    <span class="info-title">INTERACTIVE EDITOR</span>
+                    <p>Drag mouse on the <b>True Environment</b> to draw custom walls. Click on the <b>SLAM Map</b> to set a navigation target.</p>
+                </div>
+
+                <!-- Manual Drive Keyboard Hints -->
+                <div class="manual-keys">
+                    <span class="info-title">KEYBOARD CONTROL (WASD)</span>
+                    <div class="keys-grid">
+                        <div class="key-item">W: Forward</div>
+                        <div class="key-item">S: Backward</div>
+                        <div class="key-item">A: Left</div>
+                        <div class="key-item">D: Right</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- CENTER COLUMN: DUAL CANVASES -->
+            <section class="simulation-viewports">
+                <!-- VIEWPORT A: TRUE WORLD -->
+                <div class="viewport-card glass">
+                    <div class="viewport-header">
+                        <h3>TRUE SIMULATION ENVIRONMENT</h3>
+                        <span class="badge badge-green">PHYSICS ENGINE</span>
+                    </div>
+                    <div class="canvas-wrapper">
+                        <canvas id="canvas-true" width="800" height="600"></canvas>
+                    </div>
+                </div>
+
+                <!-- VIEWPORT B: SLAM MAP -->
+                <div class="viewport-card glass">
+                    <div class="viewport-header">
+                        <h3>SLAM OCCUPANCY GRID (ESTIMATED MAP)</h3>
+                        <span class="badge badge-cyan">PROBABILITY SLAM</span>
+                    </div>
+                    <div class="canvas-wrapper">
+                        <canvas id="canvas-slam" width="800" height="600"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- RIGHT COLUMN: TELEMETRY & Sweep -->
+            <section class="telemetry-panel glass">
+                <div class="panel-header">
+                    <h2><span class="icon">&#9889;</span> TELEMETRY HUD</h2>
+                </div>
+
+                <!-- Robot velocities / Pose -->
+                <div class="telemetry-group">
+                    <div class="telemetry-row">
+                        <span class="tel-label">EST. POSE X</span>
+                        <span class="tel-value font-orbitron text-cyan" id="tel-x">0.00 px</span>
+                    </div>
+                    <div class="telemetry-row">
+                        <span class="tel-label">EST. POSE Y</span>
+                        <span class="tel-value font-orbitron text-cyan" id="tel-y">0.00 px</span>
+                    </div>
+                    <div class="telemetry-row">
+                        <span class="tel-label">EST. HEADING</span>
+                        <span class="tel-value font-orbitron text-cyan" id="tel-theta">0.00 rad</span>
+                    </div>
+                </div>
+
+                <div class="telemetry-divider"></div>
+
+                <div class="telemetry-group">
+                    <div class="telemetry-row">
+                        <span class="tel-label">LINEAR VEL (V)</span>
+                        <span class="tel-value font-orbitron text-green" id="tel-v">0.0 px/s</span>
+                    </div>
+                    <div class="telemetry-row">
+                        <span class="tel-label">ANGULAR VEL (W)</span>
+                        <span class="tel-value font-orbitron text-green" id="tel-w">0.0 rad/s</span>
+                    </div>
+                </div>
+
+                <div class="telemetry-divider"></div>
+
+                <!-- RADAR POLAR PLOT -->
+                <div class="radar-plot-card">
+                    <label class="group-title">LIDAR POLAR SCAN PROFILE</label>
+                    <div class="radar-canvas-wrapper">
+                        <canvas id="canvas-radar" width="220" height="220"></canvas>
+                    </div>
+                    <span class="radar-label font-orbitron">360° SENSOR ARRAY</span>
+                </div>
+            </section>
+        </main>
+    </div>
+    
+    <script src="static/app.js" type="module"></script>
+</body>
+</html>
