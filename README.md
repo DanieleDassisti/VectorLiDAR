@@ -99,8 +99,8 @@ lidar-robotics-sandbox/
 1.  Ensure you have **Python 3.10+** installed.
 2.  Clone the repository:
     ```bash
-    git clone https://github.com/yourusername/cyberlidar-sandbox.git
-    cd cyberlidar-sandbox
+    git clone https://github.com/DanieleDassisti/VectorLiDAR.git
+    cd VectorLiDAR
     ```
 3.  Create a virtual environment and install requirements:
     ```bash
