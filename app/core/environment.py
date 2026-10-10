@@ -1,5 +1,5 @@
 import numpy as np
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from app.core.vector2d import ray_segment_intersection_vectorized
 
 class Environment:
@@ -8,11 +8,21 @@ class Environment:
         self.height = height
         # List of segments: each is a numpy array of shape (2, 2) [[x1, y1], [x2, y2]]
         self.segments: List[np.ndarray] = []
+        self._cached_starts: Optional[np.ndarray] = None
+        self._cached_ends: Optional[np.ndarray] = None
+        self._cached_serialized: Optional[List[List[float]]] = None
         self.default_walls()
+
+    def _invalidate_cache(self):
+        """Invalidate cached segment arrays and serialized data."""
+        self._cached_starts = None
+        self._cached_ends = None
+        self._cached_serialized = None
 
     def clear(self):
         """Clear all obstacles, keeping only the boundary walls."""
         self.segments = []
+        self._invalidate_cache()
         self.default_walls()
 
     def default_walls(self):
@@ -27,22 +37,30 @@ class Environment:
     def add_wall(self, x1: float, y1: float, x2: float, y2: float):
         """Add a custom line segment wall to the environment."""
         self.segments.append(np.array([[x1, y1], [x2, y2]], dtype=np.float64))
+        self._invalidate_cache()
 
     def get_segments_arrays(self) -> Tuple[np.ndarray, np.ndarray]:
         """
         Return starts and ends of all segments as numpy arrays.
-        Useful for vectorized calculations.
+        Uses cached arrays to avoid re-allocating on every frame.
         Returns:
             starts: shape (M, 2)
             ends: shape (M, 2)
         """
-        M = len(self.segments)
-        starts = np.zeros((M, 2))
-        ends = np.zeros((M, 2))
-        for idx, seg in enumerate(self.segments):
-            starts[idx] = seg[0]
-            ends[idx] = seg[1]
-        return starts, ends
+        if self._cached_starts is None or self._cached_ends is None:
+            M = len(self.segments)
+            if M == 0:
+                self._cached_starts = np.empty((0, 2), dtype=np.float64)
+                self._cached_ends = np.empty((0, 2), dtype=np.float64)
+            else:
+                starts = np.zeros((M, 2), dtype=np.float64)
+                ends = np.zeros((M, 2), dtype=np.float64)
+                for idx, seg in enumerate(self.segments):
+                    starts[idx] = seg[0]
+                    ends[idx] = seg[1]
+                self._cached_starts = starts
+                self._cached_ends = ends
+        return self._cached_starts, self._cached_ends
 
     def raycast(self, origin: Tuple[float, float], angles: np.ndarray, max_range: float) -> np.ndarray:
         """
@@ -140,4 +158,6 @@ class Environment:
 
     def serialize(self) -> List[List[float]]:
         """Serialize segments to lists for JSON transmission."""
-        return [[float(p[0][0]), float(p[0][1]), float(p[1][0]), float(p[1][1])] for p in self.segments]
+        if self._cached_serialized is None:
+            self._cached_serialized = [[float(p[0][0]), float(p[0][1]), float(p[1][0]), float(p[1][1])] for p in self.segments]
+        return self._cached_serialized
