@@ -51,8 +51,7 @@ class SLAMGridMap:
         if not self.in_bounds(start_col, start_row):
             return
 
-        # Prepare lists of cells to update to avoid multiple updates per cell in a single step
-        # This keeps the SLAM calculations clean and fast
+        # Prepare sets of cells to update to avoid multiple updates per cell in a single step
         cells_free = set()
         cells_occupied = set()
 
@@ -61,41 +60,35 @@ class SLAMGridMap:
             end_x, end_y = polar_to_cartesian(robot_x, robot_y, dist, robot_theta + angle)
             end_col, end_row = self.world_to_grid(end_x, end_y)
             
-            # Trace the line using Bresenham's algorithm
+            # Trace the line using Bresenham's algorithm (already clamped to grid bounds)
             beam_cells = self.bresenham_line(start_col, start_row, end_col, end_row)
-            
+            if not beam_cells:
+                continue
+
             # All cells along the beam are free
             # The last cell is the obstacle hit point if the range is less than max_range
-            is_hit = dist < (max_range - 1.0)
-            
-            if len(beam_cells) > 0:
-                if is_hit:
-                    # Endpoint is occupied
-                    endpoint = beam_cells[-1]
-                    if self.in_bounds(endpoint[0], endpoint[1]):
-                        cells_occupied.add(endpoint)
-                    # Remaining cells are free
-                    for cell in beam_cells[:-1]:
-                        if self.in_bounds(cell[0], cell[1]):
-                            cells_free.add(cell)
-                else:
-                    # Entire ray is free
-                    for cell in beam_cells:
-                        if self.in_bounds(cell[0], cell[1]):
-                            cells_free.add(cell)
+            if dist < (max_range - 1.0):
+                cells_occupied.add(beam_cells[-1])
+                if len(beam_cells) > 1:
+                    cells_free.update(beam_cells[:-1])
+            else:
+                cells_free.update(beam_cells)
 
         # Apply log-odds updates
         # Ensure occupied takes precedence if a cell was marked both (e.g. noise boundaries)
-        cells_free = cells_free - cells_occupied
+        cells_free -= cells_occupied
         
-        for col, row in cells_free:
-            self.log_odds[row, col] = max(self.min_log_odds, self.log_odds[row, col] + self.log_odds_free)
+        if cells_free:
+            cf = np.fromiter((c for c, _ in cells_free), dtype=np.intp, count=len(cells_free))
+            rf = np.fromiter((r for _, r in cells_free), dtype=np.intp, count=len(cells_free))
+            self.log_odds[rf, cf] = np.maximum(self.min_log_odds, self.log_odds[rf, cf] + self.log_odds_free)
+            self.probabilities[rf, cf] = 1.0 / (1.0 + np.exp(-self.log_odds[rf, cf]))
             
-        for col, row in cells_occupied:
-            self.log_odds[row, col] = min(self.max_log_odds, self.log_odds[row, col] + self.log_odds_occ)
-
-        # Update probability matrix: p = 1 - 1 / (1 + exp(log_odds))
-        self.probabilities = 1.0 - 1.0 / (1.0 + np.exp(self.log_odds))
+        if cells_occupied:
+            co = np.fromiter((c for c, _ in cells_occupied), dtype=np.intp, count=len(cells_occupied))
+            ro = np.fromiter((r for _, r in cells_occupied), dtype=np.intp, count=len(cells_occupied))
+            self.log_odds[ro, co] = np.minimum(self.max_log_odds, self.log_odds[ro, co] + self.log_odds_occ)
+            self.probabilities[ro, co] = 1.0 / (1.0 + np.exp(-self.log_odds[ro, co]))
 
     def bresenham_line(self, x0: int, y0: int, x1: int, y1: int) -> List[Tuple[int, int]]:
         """
@@ -141,6 +134,5 @@ class SLAMGridMap:
         Serialize occupancy grid to 1D list of ints (0-100 probability) for web visualizer.
         Use: 0 for free space, 50 for unknown, 100 for wall.
         """
-        # Convert probabilities (0.0 - 1.0) to integers (0 - 100)
-        grid_1d = (self.probabilities * 100).astype(np.uint8).flatten()
-        return grid_1d.tolist()
+        # Convert probabilities (0.0 - 1.0) to integers (0 - 100) using memory-efficient ravel
+        return (self.probabilities * 100).astype(np.uint8).ravel().tolist()
