@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import math
 import os
 import yaml
 import numpy as np
@@ -66,6 +67,9 @@ def get_lidar_angles() -> np.ndarray:
     half_fov = fov_rad / 2
     return np.linspace(-half_fov, half_fov, lidar_beam_count)
 
+# Precomputed LiDAR angle array
+cached_lidar_angles = get_lidar_angles()
+
 async def broadcast_state(true_pose: Tuple[float, float, float], angles: np.ndarray, ranges: np.ndarray):
     """Serialize and send simulation state to all connected WebSocket clients."""
     if not connected_clients:
@@ -109,7 +113,7 @@ async def simulation_loop():
             
             # 2. Get LiDAR ranges
             true_pose = robot.get_pose()
-            angles = get_lidar_angles()
+            angles = cached_lidar_angles
             ranges = env.raycast((true_pose[0], true_pose[1]), angles + true_pose[2], lidar_max_range)
             if noise_enabled:
                 noise = np.random.normal(0, lidar_noise_std, size=ranges.shape)
@@ -130,7 +134,7 @@ async def simulation_loop():
                 )
                 if target:
                     # If target changed, reset path to trigger immediate recalculation
-                    if not navigation_target or np.hypot(target[0]-navigation_target[0], target[1]-navigation_target[1]) > 25.0:
+                    if not navigation_target or math.hypot(target[0]-navigation_target[0], target[1]-navigation_target[1]) > 25.0:
                         navigation_target = target
                         global_path = []
                 else:
@@ -143,7 +147,7 @@ async def simulation_loop():
             # 5. Global Path Planning (A*)
             if navigation_target:
                 replan_counter += 1
-                dist_to_target = np.hypot(robot.x_odo - navigation_target[0], robot.y_odo - navigation_target[1])
+                dist_to_target = math.hypot(robot.x_odo - navigation_target[0], robot.y_odo - navigation_target[1])
                 
                 # Arrived at target check
                 if dist_to_target < planner.target_tolerance:
@@ -264,9 +268,12 @@ async def websocket_endpoint(websocket: WebSocket):
                 logger.info("Odometry and SLAM map reset.")
                 
             elif msg_type == "update_config":
+                old_beam_count = lidar_beam_count
                 lidar_beam_count = int(msg.get("beam_count", lidar_beam_count))
                 lidar_max_range = float(msg.get("max_range", lidar_max_range))
                 noise_enabled = bool(msg.get("noise_enabled", noise_enabled))
+                if lidar_beam_count != old_beam_count:
+                    cached_lidar_angles = get_lidar_angles()
                 logger.info(f"Sensor configuration updated: Beams={lidar_beam_count}, Range={lidar_max_range}, Noise={noise_enabled}")
                 
     except WebSocketDisconnect:
