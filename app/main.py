@@ -66,22 +66,10 @@ def get_lidar_angles() -> np.ndarray:
     half_fov = fov_rad / 2
     return np.linspace(-half_fov, half_fov, lidar_beam_count)
 
-async def broadcast_state():
+async def broadcast_state(true_pose: Tuple[float, float, float], angles: np.ndarray, ranges: np.ndarray):
     """Serialize and send simulation state to all connected WebSocket clients."""
     if not connected_clients:
         return
-        
-    # LiDAR calculations
-    angles = get_lidar_angles()
-    true_pose = robot.get_pose()
-    
-    # Generate ranges using true environment
-    ranges = env.raycast((true_pose[0], true_pose[1]), angles + true_pose[2], lidar_max_range)
-    
-    # Add noise if enabled
-    if noise_enabled:
-        noise = np.random.normal(0, lidar_noise_std, size=ranges.shape)
-        ranges = np.clip(ranges + noise, 0, lidar_max_range)
         
     # Serialize data
     state = {
@@ -116,9 +104,8 @@ async def simulation_loop():
     while True:
         try:
             # 1. Update true physics (robot kinematics and collision check)
-            # Find wall segments starts/ends
-            starts, ends = env.get_segments_arrays()
-            wall_segs = [np.array([s, e]) for s, e in zip(starts, ends)]
+            # Wall segments are directly cached in env.segments
+            wall_segs = env.segments
             
             # 2. Get LiDAR ranges
             true_pose = robot.get_pose()
@@ -197,8 +184,8 @@ async def simulation_loop():
             # Perform movement integration
             robot.update(dt, wall_segs)
             
-            # 7. Broadcast updated state
-            await broadcast_state()
+            # 7. Broadcast updated state (reusing existing sensor scan)
+            await broadcast_state(true_pose, angles, ranges)
             
         except Exception as e:
             logger.error(f"Error in simulation loop: {e}", exc_info=True)

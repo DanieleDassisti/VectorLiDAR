@@ -203,6 +203,11 @@ function renderTrueSim(state) {
     drawRobot(ctx, rx, ry, rtheta, "#ff3366", "rgba(255, 51, 102, 0.3)");
 }
 
+// Cached offscreen canvas and ImageData for SLAM rendering
+let slamOffscreenCanvas = null;
+let slamOffscreenCtx = null;
+let slamImageData = null;
+
 // Render SLAM Occupancy Grid Map
 function renderSLAMMap(state) {
     const ctx = ctxSLAM;
@@ -213,44 +218,47 @@ function renderSLAMMap(state) {
     const cell_size = state.grid_cell_size;
     const slam_grid = state.slam_grid;
 
-    // Direct pixel rendering with ImageData for high 60fps performance
-    // We render at the native grid size, then draw onto the full canvas.
-    const tempCanvas = document.createElement("canvas");
-    tempCanvas.width = cols;
-    tempCanvas.height = rows;
-    const tempCtx = tempCanvas.getContext("2d");
-    const imgData = tempCtx.createImageData(cols, rows);
+    // Cache offscreen canvas and ImageData buffer to avoid garbage collection churn at 20fps
+    if (!slamOffscreenCanvas || slamOffscreenCanvas.width !== cols || slamOffscreenCanvas.height !== rows) {
+        slamOffscreenCanvas = document.createElement("canvas");
+        slamOffscreenCanvas.width = cols;
+        slamOffscreenCanvas.height = rows;
+        slamOffscreenCtx = slamOffscreenCanvas.getContext("2d");
+        slamImageData = slamOffscreenCtx.createImageData(cols, rows);
+    }
 
-    for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-            const idx = r * cols + c;
-            const prob = slam_grid[idx];
-            let r_col, g_col, b_col, alpha;
+    const data = slamImageData.data;
+    const totalCells = rows * cols;
+    for (let idx = 0; idx < totalCells; idx++) {
+        const prob = slam_grid[idx];
+        const pixelIdx = idx * 4;
 
-            if (prob > 65) {
-                // Occupied obstacle cell (Glowing Cyan)
-                r_col = 0; g_col = 242; b_col = 254; alpha = 255;
-            } else if (prob < 40) {
-                // Explored Free cell (Clear White/Light blue)
-                r_col = 240; g_col = 245; b_col = 255; alpha = 230;
-            } else {
-                // Unknown space cell (Dark background)
-                r_col = 15; g_col = 22; b_col = 38; alpha = 255;
-            }
-
-            const pixelIdx = (r * cols + c) * 4;
-            imgData.data[pixelIdx] = r_col;
-            imgData.data[pixelIdx + 1] = g_col;
-            imgData.data[pixelIdx + 2] = b_col;
-            imgData.data[pixelIdx + 3] = alpha;
+        if (prob > 65) {
+            // Occupied obstacle cell (Glowing Cyan)
+            data[pixelIdx] = 0;
+            data[pixelIdx + 1] = 242;
+            data[pixelIdx + 2] = 254;
+            data[pixelIdx + 3] = 255;
+        } else if (prob < 40) {
+            // Explored Free cell (Clear White/Light blue)
+            data[pixelIdx] = 240;
+            data[pixelIdx + 1] = 245;
+            data[pixelIdx + 2] = 255;
+            data[pixelIdx + 3] = 230;
+        } else {
+            // Unknown space cell (Dark background)
+            data[pixelIdx] = 15;
+            data[pixelIdx + 1] = 22;
+            data[pixelIdx + 2] = 38;
+            data[pixelIdx + 3] = 255;
         }
     }
     
-    tempCtx.putImageData(imgData, 0, 0);
+    slamOffscreenCtx.putImageData(slamImageData, 0, 0);
     
     // Scale and draw without anti-aliasing for a clean matrix pixel-art look
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(tempCanvas, 0, 0, width, height);
+    ctx.drawImage(slamOffscreenCanvas, 0, 0, width, height);
     ctx.imageSmoothingEnabled = true;
 
     // Draw A* Planned Path
