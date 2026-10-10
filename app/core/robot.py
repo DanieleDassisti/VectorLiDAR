@@ -93,20 +93,31 @@ class Robot:
         new_theta = normalize_angle(self.theta + dtheta)
         
         collided = False
-        # Simplified segment collision: check distance from new_x, new_y to each wall
+        radius_sq = self.radius * self.radius
+        
+        # Fast segment collision: compute minimum squared distance without numpy allocations
         for seg in segments:
-            p1 = seg[0]
-            p2 = seg[1]
-            # Find closest point on segment to (new_x, new_y)
-            seg_len_sq = np.sum((p2 - p1) ** 2)
-            if seg_len_sq == 0:
-                d = distance((new_x, new_y), (p1[0], p1[1]))
+            x1, y1 = float(seg[0][0]), float(seg[0][1])
+            x2, y2 = float(seg[1][0]), float(seg[1][1])
+            
+            dx_seg = x2 - x1
+            dy_seg = y2 - y1
+            seg_len_sq = dx_seg * dx_seg + dy_seg * dy_seg
+            
+            if seg_len_sq == 0.0:
+                dist_sq = (new_x - x1) * (new_x - x1) + (new_y - y1) * (new_y - y1)
             else:
-                t = max(0.0, min(1.0, np.dot([new_x - p1[0], new_y - p1[1]], p2 - p1) / seg_len_sq))
-                proj = p1 + t * (p2 - p1)
-                d = distance((new_x, new_y), (proj[0], proj[1]))
+                t = ((new_x - x1) * dx_seg + (new_y - y1) * dy_seg) / seg_len_sq
+                if t <= 0.0:
+                    px, py = x1, y1
+                elif t >= 1.0:
+                    px, py = x2, y2
+                else:
+                    px = x1 + t * dx_seg
+                    py = y1 + t * dy_seg
+                dist_sq = (new_x - px) * (new_x - px) + (new_y - py) * (new_y - py)
                 
-            if d < self.radius:
+            if dist_sq < radius_sq:
                 collided = True
                 break
                 
